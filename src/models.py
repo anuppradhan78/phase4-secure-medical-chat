@@ -3,7 +3,7 @@ Pydantic models for the Secure Medical Chat system.
 Defines data structures for redaction, validation, cost tracking, and audit events.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from enum import Enum
@@ -82,7 +82,7 @@ class CostData(BaseModel):
     total_tokens: int = Field(..., description="Total tokens used")
     cost_usd: float = Field(..., description="Cost in USD")
     user_role: UserRole = Field(..., description="Role of the user making the request")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Timestamp of the request")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp of the request")
     session_id: Optional[str] = Field(None, description="Session ID if available")
     cache_hit: bool = Field(default=False, description="Whether response was served from cache")
 
@@ -90,7 +90,7 @@ class CostData(BaseModel):
 class AuditEvent(BaseModel):
     """Audit event for logging system interactions."""
     event_id: Optional[str] = Field(None, description="Unique event identifier")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Event timestamp")
     user_id: Optional[str] = Field(None, description="User identifier")
     user_role: UserRole = Field(..., description="User role")
     session_id: Optional[str] = Field(None, description="Session identifier")
@@ -107,7 +107,7 @@ class AuditEvent(BaseModel):
 class SecurityEvent(BaseModel):
     """Security event for logging threats and blocks."""
     event_id: Optional[str] = Field(None, description="Unique event identifier")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Event timestamp")
     user_id: Optional[str] = Field(None, description="User identifier")
     user_role: Optional[UserRole] = Field(None, description="User role")
     session_id: Optional[str] = Field(None, description="Session identifier")
@@ -124,8 +124,8 @@ class UserSession(BaseModel):
     session_id: str = Field(..., description="Unique session identifier")
     user_id: Optional[str] = Field(None, description="User identifier")
     user_role: UserRole = Field(..., description="User role")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Session creation time")
-    last_activity: datetime = Field(default_factory=datetime.utcnow, description="Last activity timestamp")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Session creation time")
+    last_activity: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Last activity timestamp")
     expires_at: datetime = Field(..., description="Session expiration time")
     is_active: bool = Field(default=True, description="Whether session is active")
     request_count: int = Field(default=0, description="Number of requests in this session")

@@ -1,0 +1,82 @@
+[
+  {
+    "text": "Hi, my name is John Smith and I was born on March 15, 1985. I'm calling about my recent lab results.",
+    "expected_entities": ["PERSON", "DATE_TIME"]
+  },
+  {
+    "text": "Please call me back at 555-123-4567 or email me at john.doe@email.com regarding my appointment.",
+    "expected_entities": ["PHONE_NUMBER", "EMAIL_ADDRESS"]
+  },
+  {
+    "text": "My social security number is 123-45-6789 and I live at 123 Main Street, New York, NY 10001.",
+    "expected_entities": ["US_SSN", "LOCATION"]
+  },
+  {
+    "text": "Dr. Sarah Johnson examined me on January 10, 2024 at the clinic on Oak Avenue.",
+    "expected_entities": ["PERSON", "DATE_TIME", "LOCATION"]
+  },
+  {
+    "text": "I have chest pain that started yesterday around 3 PM. Should I be concerned?",
+    "expected_entities": ["DATE_TIME"]
+  },
+  {
+    "text": "My medical record number is MRN-789456 and my insurance ID is INS123456789.",
+    "expected_entities": []
+  },
+  {
+    "text": "Contact my emergency contact Mary Williams at 555-987-6543 if needed.",
+    "expected_entities": ["PERSON", "PHONE_NUMBER"]
+  },
+  {
+    "text": "I was prescribed medication on December 5th, 2023 by Dr. Michael Brown.",
+    "expected_entities": ["DATE_TIME", "PERSON"]
+  },
+  {
+    "text": "My appointment is scheduled for next Tuesday at 2:30 PM with nurse Jennifer Davis.",
+    "expected_entities": ["DATE_TIME", "PERSON"]
+  },
+  {
+    "text": "I live in Los Angeles, California and work at General Hospital on Sunset Boulevard.",
+    "expected_entities": ["LOCATION", "LOCATION"]
+  },
+  {
+    "text": "Please send my records to robert.smith@hospital.org before my surgery on March 20th.",
+    "expected_entities": ["EMAIL_ADDRESS", "DATE_TIME"]
+  },
+  {
+    "text": "My phone number changed to 555-444-3333 and I moved to 456 Elm Street, Boston, MA.",
+    "expected_entities": ["PHONE_NUMBER", "LOCATION"]
+  },
+  {
+    "text": "I was born on July 4, 1976 and my SSN is 987-65-4321 for verification purposes.",
+    "expected_entities": ["DATE_TIME", "US_SSN"]
+  },
+  {
+    "text": "Dr. Amanda Wilson called me yesterday about my test results from last Friday.",
+    "expected_entities": ["PERSON", "DATE_TIME", "DATE_TIME"]
+  },
+  {
+    "text": "My symptoms started on Monday morning around 8 AM when I was at work.",
+    "expected_entities": ["DATE_TIME"]
+  },
+  {
+    "text": "Please contact Lisa Thompson at lisa.t@clinic.com or call 555-111-2222.",
+    "expected_entities": ["PERSON", "EMAIL_ADDRESS", "PHONE_NUMBER"]
+  },
+  {
+    "text": "I have an appointment with Dr. James Miller on February 14, 2024 at 10:15 AM.",
+    "expected_entities": ["PERSON", "DATE_TIME"]
+  },
+  {
+    "text": "My address is 789 Pine Street, Seattle, WA 98101 and my DOB is 05/22/1990.",
+    "expected_entities": ["LOCATION", "DATE_TIME"]
+  },
+  {
+    "text": "The incident happened on November 30th at approximately 6:45 PM near the hospital.",
+    "expected_entities": ["DATE_TIME", "LOCATION"]
+  },
+  {
+    "text": "Contact my physician Dr. Patricia Lee at 555-777-8888 for my medical history.",
+    "expected_entities": ["PERSON", "PHONE_NUMBER"]
+  }
+]
