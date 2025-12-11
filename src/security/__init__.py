@@ -2,6 +2,5 @@
 Security module for PII/PHI redaction and guardrails.
 """
 
-from .pii_redaction import PIIRedactionService
-
-__all__ = ["PIIRedactionService"]
+# Import only when needed to avoid circular import issues
+__all__ = ["PIIRedactionService", "GuardrailsService"]

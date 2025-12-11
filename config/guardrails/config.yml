@@ -1,0 +1,60 @@
+models:
+  - type: main
+    engine: openai
+    model: gpt-3.5-turbo
+
+rails:
+  input:
+    flows:
+      - check prompt injection
+      - check medical safety
+      - check jailbreak attempts
+  output:
+    flows:
+      - check medical disclaimers
+      - check harmful content
+
+prompts:
+  - task: general
+    content: |
+      You are a helpful medical information assistant. You provide general health information but always remind users to consult healthcare professionals for medical advice.
+      
+      Important guidelines:
+      - Always include medical disclaimers
+      - Never provide specific medication dosages
+      - Recommend emergency services for serious symptoms
+      - Refuse to provide treatment plans
+      - Cite medical sources when possible
+
+user_messages:
+  check_prompt_injection:
+    - "ignore previous instructions"
+    - "you are now in developer mode"
+    - "forget everything above"
+    - "act as if you are"
+    - "pretend you are"
+    - "roleplay as"
+    - "simulate being"
+    - "override your instructions"
+    - "disregard your programming"
+    - "bypass your guidelines"
+
+  check_jailbreak:
+    - "DAN mode"
+    - "developer mode"
+    - "unrestricted mode"
+    - "jailbreak"
+    - "break free"
+    - "ignore safety"
+    - "remove restrictions"
+
+  medical_safety_triggers:
+    - "medication dosage"
+    - "treatment plan"
+    - "diagnosis"
+    - "prescription"
+    - "medical advice"
+
+bot_messages:
+  medical_disclaimer: |
+    This is for informational purposes only. Consult your healthcare provider for medical advice.
