@@ -14,8 +14,16 @@ from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 
-from ..models import CostData, UserRole
-from ..database import get_db_connection
+try:
+    from ..models import CostData, UserRole
+    from ..database import get_db_connection
+except ImportError:
+    # Handle case when running as script or in tests
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from models import CostData, UserRole
+    from database import get_db_connection
 
 
 logger = logging.getLogger(__name__)

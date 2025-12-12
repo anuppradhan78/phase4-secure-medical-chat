@@ -18,7 +18,14 @@ import json
 from .helicone_client import HeliconeClient, ModelRouter, HeliconeConfig
 from .cost_tracker import CostTracker
 from .cost_dashboard import CostDashboard
-from ..models import CostData, UserRole, ModelConfig, ChatRequest, ChatResponse
+try:
+    from ..models import CostData, UserRole, ModelConfig, ChatRequest, ChatResponse
+except ImportError:
+    # Handle case when running as script or in tests
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from models import CostData, UserRole, ModelConfig, ChatRequest, ChatResponse
 
 
 logger = logging.getLogger(__name__)
@@ -47,9 +54,17 @@ class LLMGateway:
         self.cost_tracker = CostTracker(db_path)
         self.cost_dashboard = CostDashboard(self.cost_tracker, self.helicone_client)
         
-        # Simple in-memory cache for responses
+        # Enhanced response cache with analytics
         self._response_cache: Dict[str, Dict[str, Any]] = {}
         self._cache_ttl_seconds = 86400  # 24 hours
+        self._cache_stats = {
+            "hits": 0,
+            "misses": 0,
+            "evictions": 0,
+            "total_requests": 0,
+            "cache_size_history": [],
+            "hit_rate_history": []
+        }
         
         logger.info("LLM Gateway initialized with cost tracking and optimization")
     
@@ -76,11 +91,15 @@ class LLMGateway:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": request.message})
         
-        # Check cache first
+        # Check cache first with enhanced analytics
         cache_key = self._generate_cache_key(messages, request.user_role)
         cached_response = self._get_cached_response(cache_key)
         
+        # Update cache statistics
+        self._cache_stats["total_requests"] += 1
+        
         if cached_response:
+            self._cache_stats["hits"] += 1
             logger.info(f"Cache hit for request from {request.user_role.value}")
             
             # Still record the "cost" (which would be 0 for cache hits)
@@ -108,7 +127,8 @@ class LLMGateway:
                 "model_used": cached_response["model"],
                 "cache_hit": True,
                 "security_flags": [],
-                "tokens_used": 0
+                "tokens_used": 0,
+                "cache_age_seconds": cached_response.get("age_seconds", 0)
             }
             
             return ChatResponse(
@@ -116,11 +136,20 @@ class LLMGateway:
                 metadata=metadata
             ), metadata
         
-        # Select appropriate model
-        model_config = self.model_router.select_model(
+        # Cache miss
+        self._cache_stats["misses"] += 1
+        
+        # Select appropriate model with enhanced routing
+        routing_result = self.model_router.select_model(
             request.message,
             request.user_role
         )
+        model_config = routing_result["model_config"]
+        optimized_message = routing_result["optimized_message"]
+        
+        # Use optimized message for LLM request
+        if optimized_message != request.message:
+            messages[-1]["content"] = optimized_message  # Replace user message with optimized version
         
         logger.info(
             f"Processing request with {model_config.model} for {request.user_role.value}"
@@ -142,17 +171,21 @@ class LLMGateway:
             # Store cost data persistently
             self.cost_tracker.record_cost(cost_data)
             
-            # Cache the response
+            # Cache the response with enhanced metadata
             self._cache_response(cache_key, {
                 "content": response_content,
                 "model": model_config.model,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "user_role": request.user_role.value,
+                "complexity_score": routing_result["complexity_analysis"]["overall_score"],
+                "tokens_used": cost_data.total_tokens,
+                "cost_usd": cost_data.cost_usd
             })
             
             end_time = datetime.now(timezone.utc)
             latency_ms = int((end_time - start_time).total_seconds() * 1000)
             
-            # Prepare metadata
+            # Prepare enhanced metadata
             metadata = {
                 "redaction_info": {"entities_redacted": 0, "entity_types": []},
                 "cost": cost_data.cost_usd,
@@ -162,7 +195,11 @@ class LLMGateway:
                 "security_flags": [],
                 "tokens_used": cost_data.total_tokens,
                 "input_tokens": cost_data.input_tokens,
-                "output_tokens": cost_data.output_tokens
+                "output_tokens": cost_data.output_tokens,
+                "complexity_analysis": routing_result["complexity_analysis"],
+                "optimization_applied": routing_result["optimization_result"] is not None,
+                "tokens_saved": routing_result["optimization_result"]["tokens_saved"] if routing_result["optimization_result"] else 0,
+                "routing_decision": routing_result["routing_decision"]
             }
             
             logger.info(
@@ -206,27 +243,60 @@ class LLMGateway:
         
         cached_item = self._response_cache[cache_key]
         cached_time = datetime.fromisoformat(cached_item["timestamp"])
+        age_seconds = (datetime.now(timezone.utc) - cached_time).total_seconds()
         
         # Check if cache is expired
-        if (datetime.now(timezone.utc) - cached_time).total_seconds() > self._cache_ttl_seconds:
+        if age_seconds > self._cache_ttl_seconds:
             del self._response_cache[cache_key]
+            self._cache_stats["evictions"] += 1
             return None
         
+        # Add age information to cached item
+        cached_item["age_seconds"] = int(age_seconds)
         return cached_item
     
     def _cache_response(self, cache_key: str, response_data: Dict[str, Any]):
-        """Cache response data."""
+        """Cache response data with enhanced management."""
         self._response_cache[cache_key] = response_data
         
-        # Simple cache cleanup - remove oldest entries if cache gets too large
-        if len(self._response_cache) > 1000:
+        # Record cache size for analytics
+        current_size = len(self._response_cache)
+        self._cache_stats["cache_size_history"].append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "size": current_size
+        })
+        
+        # Keep only last 100 size measurements
+        if len(self._cache_stats["cache_size_history"]) > 100:
+            self._cache_stats["cache_size_history"] = self._cache_stats["cache_size_history"][-100:]
+        
+        # Enhanced cache cleanup - remove oldest entries if cache gets too large
+        if current_size > 1000:
             # Remove oldest 100 entries
             sorted_items = sorted(
                 self._response_cache.items(),
                 key=lambda x: x[1]["timestamp"]
             )
+            evicted_count = 0
             for key, _ in sorted_items[:100]:
                 del self._response_cache[key]
+                evicted_count += 1
+            
+            self._cache_stats["evictions"] += evicted_count
+            logger.info(f"Cache cleanup: evicted {evicted_count} entries, new size: {len(self._response_cache)}")
+        
+        # Update hit rate history periodically
+        if self._cache_stats["total_requests"] % 10 == 0:  # Every 10 requests
+            hit_rate = self.get_cache_hit_rate()
+            self._cache_stats["hit_rate_history"].append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "hit_rate": hit_rate,
+                "total_requests": self._cache_stats["total_requests"]
+            })
+            
+            # Keep only last 100 hit rate measurements
+            if len(self._cache_stats["hit_rate_history"]) > 100:
+                self._cache_stats["hit_rate_history"] = self._cache_stats["hit_rate_history"][-100:]
     
     def get_metrics(self, period_hours: int = 24) -> Dict[str, Any]:
         """
@@ -274,22 +344,40 @@ class LLMGateway:
         return self.cost_tracker.get_expensive_queries(limit)
     
     def clear_cache(self):
-        """Clear response cache."""
+        """Clear response cache and reset statistics."""
+        entries_cleared = len(self._response_cache)
         self._response_cache.clear()
-        logger.info("Response cache cleared")
+        
+        # Reset cache statistics but preserve historical data
+        self._cache_stats["evictions"] += entries_cleared
+        
+        logger.info(f"Response cache cleared: {entries_cleared} entries removed")
+        
+        return {
+            "entries_cleared": entries_cleared,
+            "cache_stats_preserved": True,
+            "message": f"Successfully cleared {entries_cleared} cache entries"
+        }
     
     def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
+        """Get comprehensive cache statistics."""
         total_entries = len(self._response_cache)
         
         # Calculate cache age distribution
         now = datetime.now(timezone.utc)
         age_buckets = {"<1h": 0, "1-6h": 0, "6-24h": 0, ">24h": 0}
         
+        # Enhanced cache analysis
+        total_cached_cost = 0.0
+        total_cached_tokens = 0
+        model_distribution = {}
+        role_distribution = {}
+        
         for cached_item in self._response_cache.values():
             cached_time = datetime.fromisoformat(cached_item["timestamp"])
             age_hours = (now - cached_time).total_seconds() / 3600
             
+            # Age distribution
             if age_hours < 1:
                 age_buckets["<1h"] += 1
             elif age_hours < 6:
@@ -298,12 +386,126 @@ class LLMGateway:
                 age_buckets["6-24h"] += 1
             else:
                 age_buckets[">24h"] += 1
+            
+            # Cost and token analysis
+            if "cost_usd" in cached_item:
+                total_cached_cost += cached_item["cost_usd"]
+            if "tokens_used" in cached_item:
+                total_cached_tokens += cached_item["tokens_used"]
+            
+            # Model distribution
+            model = cached_item.get("model", "unknown")
+            model_distribution[model] = model_distribution.get(model, 0) + 1
+            
+            # Role distribution
+            role = cached_item.get("user_role", "unknown")
+            role_distribution[role] = role_distribution.get(role, 0) + 1
+        
+        # Calculate hit rate and effectiveness
+        hit_rate = self.get_cache_hit_rate()
         
         return {
-            "total_entries": total_entries,
-            "age_distribution": age_buckets,
-            "cache_ttl_hours": self._cache_ttl_seconds / 3600,
-            "memory_usage_estimate": total_entries * 1024  # Rough estimate in bytes
+            "basic_stats": {
+                "total_entries": total_entries,
+                "cache_ttl_hours": self._cache_ttl_seconds / 3600,
+                "memory_usage_estimate": total_entries * 1024  # Rough estimate in bytes
+            },
+            "performance_stats": {
+                "hit_rate": hit_rate,
+                "total_requests": self._cache_stats["total_requests"],
+                "cache_hits": self._cache_stats["hits"],
+                "cache_misses": self._cache_stats["misses"],
+                "evictions": self._cache_stats["evictions"]
+            },
+            "content_analysis": {
+                "age_distribution": age_buckets,
+                "model_distribution": model_distribution,
+                "role_distribution": role_distribution,
+                "total_cached_cost": total_cached_cost,
+                "total_cached_tokens": total_cached_tokens
+            },
+            "effectiveness": {
+                "cost_savings_estimate": self._cache_stats["hits"] * (total_cached_cost / max(total_entries, 1)),
+                "token_savings_estimate": self._cache_stats["hits"] * (total_cached_tokens / max(total_entries, 1)),
+                "avg_cache_age_hours": self._calculate_avg_cache_age()
+            },
+            "trends": {
+                "hit_rate_history": self._cache_stats["hit_rate_history"][-10:],  # Last 10 measurements
+                "cache_size_history": self._cache_stats["cache_size_history"][-10:]  # Last 10 measurements
+            }
+        }
+    
+    def get_cache_hit_rate(self) -> float:
+        """Calculate current cache hit rate."""
+        total_requests = self._cache_stats["total_requests"]
+        if total_requests == 0:
+            return 0.0
+        return self._cache_stats["hits"] / total_requests
+    
+    def _calculate_avg_cache_age(self) -> float:
+        """Calculate average age of cached items in hours."""
+        if not self._response_cache:
+            return 0.0
+        
+        now = datetime.now(timezone.utc)
+        total_age = 0.0
+        
+        for cached_item in self._response_cache.values():
+            cached_time = datetime.fromisoformat(cached_item["timestamp"])
+            age_hours = (now - cached_time).total_seconds() / 3600
+            total_age += age_hours
+        
+        return total_age / len(self._response_cache)
+    
+    def get_cache_effectiveness_report(self) -> Dict[str, Any]:
+        """Generate comprehensive cache effectiveness report."""
+        stats = self.get_cache_stats()
+        hit_rate = stats["performance_stats"]["hit_rate"]
+        
+        # Determine effectiveness level
+        if hit_rate >= 0.4:
+            effectiveness = "excellent"
+        elif hit_rate >= 0.25:
+            effectiveness = "good"
+        elif hit_rate >= 0.15:
+            effectiveness = "moderate"
+        else:
+            effectiveness = "poor"
+        
+        # Generate recommendations
+        recommendations = []
+        
+        if hit_rate < 0.2:
+            recommendations.append({
+                "type": "cache_optimization",
+                "priority": "high",
+                "message": f"Low cache hit rate ({hit_rate:.1%}). Consider increasing cache TTL or improving cache key generation.",
+                "action": "Analyze query patterns for better caching strategy"
+            })
+        
+        if stats["basic_stats"]["total_entries"] < 50 and self._cache_stats["total_requests"] > 100:
+            recommendations.append({
+                "type": "cache_size",
+                "priority": "medium",
+                "message": "Low cache utilization. Queries may be too diverse for effective caching.",
+                "action": "Review query similarity and cache key strategy"
+            })
+        
+        # Calculate potential savings
+        estimated_cost_per_request = 0.002  # Rough estimate for GPT-3.5
+        potential_savings = self._cache_stats["hits"] * estimated_cost_per_request
+        
+        return {
+            "effectiveness_rating": effectiveness,
+            "hit_rate": hit_rate,
+            "performance_summary": {
+                "total_requests": self._cache_stats["total_requests"],
+                "cache_hits": self._cache_stats["hits"],
+                "estimated_cost_savings": potential_savings,
+                "estimated_latency_improvement": f"{self._cache_stats['hits'] * 800}ms saved"  # Rough estimate
+            },
+            "recommendations": recommendations,
+            "detailed_stats": stats
         }
     
     def set_cache_ttl(self, ttl_seconds: int):

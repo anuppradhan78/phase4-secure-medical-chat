@@ -14,7 +14,14 @@ from typing import Dict, List, Optional, Any
 
 from .cost_tracker import CostTracker
 from .helicone_client import HeliconeClient
-from ..models import UserRole, MetricsResponse
+try:
+    from ..models import UserRole, MetricsResponse
+except ImportError:
+    # Handle case when running as script or in tests
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from models import UserRole, MetricsResponse
 
 
 logger = logging.getLogger(__name__)

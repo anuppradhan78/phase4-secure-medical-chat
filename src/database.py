@@ -11,7 +11,11 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
-from .models import AuditEvent, SecurityEvent, UserSession, EventType, ThreatType, UserRole
+try:
+    from .models import AuditEvent, SecurityEvent, UserSession, EventType, ThreatType, UserRole
+except ImportError:
+    # Handle case when running as script or in tests
+    from models import AuditEvent, SecurityEvent, UserSession, EventType, ThreatType, UserRole
 
 logger = logging.getLogger(__name__)
 
