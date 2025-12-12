@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
-from models import AuditEvent, SecurityEvent, UserSession, EventType, ThreatType, UserRole
+from .models import AuditEvent, SecurityEvent, UserSession, EventType, ThreatType, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -380,3 +380,14 @@ def init_database(db_path: str = "data/secure_chat.db") -> DatabaseManager:
     global _db_manager
     _db_manager = DatabaseManager(db_path)
     return _db_manager
+
+
+@contextmanager
+def get_db_connection(db_path: str = "data/secure_chat.db"):
+    """Simple database connection context manager for cost tracking."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        yield conn
+    finally:
+        conn.close()

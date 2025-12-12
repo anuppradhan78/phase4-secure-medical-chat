@@ -5,21 +5,78 @@ This module sets up the FastAPI application with all security layers,
 authentication, and monitoring capabilities.
 """
 
+import os
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-# Import routers (will be implemented in tasks)
-# from src.api.chat import router as chat_router
-# from src.api.metrics import router as metrics_router
-# from src.api.admin import router as admin_router
+from .llm.llm_gateway import LLMGateway
+from .llm.helicone_client import HeliconeConfig
+from .api.metrics import router as metrics_router, init_metrics_router
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global LLM Gateway instance
+llm_gateway: LLMGateway = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager for startup and shutdown."""
+    global llm_gateway
+    
+    # Startup
+    logger.info("Starting Secure Medical Chat API...")
+    
+    try:
+        # Initialize Helicone configuration
+        helicone_config = None
+        if os.getenv("HELICONE_API_KEY"):
+            helicone_config = HeliconeConfig(
+                api_key=os.getenv("HELICONE_API_KEY"),
+                enable_caching=os.getenv("HELICONE_ENABLE_CACHING", "true").lower() == "true",
+                cache_ttl_seconds=int(os.getenv("HELICONE_CACHE_TTL", "86400")),
+                enable_cost_tracking=True
+            )
+            logger.info("Helicone configuration loaded")
+        else:
+            logger.warning("HELICONE_API_KEY not found - cost tracking will use mock data")
+        
+        # Initialize LLM Gateway
+        llm_gateway = LLMGateway(
+            helicone_config=helicone_config,
+            db_path=os.getenv("DATABASE_PATH", "data/secure_chat.db")
+        )
+        
+        # Initialize API routers
+        init_metrics_router(llm_gateway)
+        
+        logger.info("LLM Gateway initialized successfully")
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize LLM Gateway: {str(e)}")
+        # Continue without LLM Gateway for basic API functionality
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Secure Medical Chat API...")
+    if llm_gateway:
+        # Perform any cleanup if needed
+        pass
+
 
 app = FastAPI(
     title="Secure Medical Chat API",
     description="A proof-of-concept conversational AI for healthcare with security, privacy, and optimization patterns",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # CORS middleware
@@ -50,12 +107,21 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "service": "secure-medical-chat"}
+    basic_health = {"status": "healthy", "service": "secure-medical-chat"}
+    
+    # Add LLM Gateway health if available
+    if llm_gateway:
+        try:
+            gateway_health = await llm_gateway.health_check()
+            basic_health["llm_gateway"] = gateway_health["overall"]
+            basic_health["cost_tracking"] = gateway_health["cost_tracker"]
+        except Exception as e:
+            basic_health["llm_gateway"] = f"error: {str(e)}"
+    
+    return basic_health
 
-# Include routers (will be uncommented as they are implemented)
-# app.include_router(chat_router, prefix="/api", tags=["chat"])
-# app.include_router(metrics_router, prefix="/api", tags=["metrics"])
-# app.include_router(admin_router, prefix="/api", tags=["admin"])
+# Include routers
+app.include_router(metrics_router, prefix="/api", tags=["metrics", "cost-tracking"])
 
 if __name__ == "__main__":
     uvicorn.run(
