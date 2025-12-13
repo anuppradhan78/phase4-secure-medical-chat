@@ -12,9 +12,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from .llm.llm_gateway import LLMGateway
-from .llm.helicone_client import HeliconeConfig
+try:
+    from .llm.llm_gateway import LLMGateway
+    from .llm.helicone_client import HeliconeConfig
+    LLM_GATEWAY_AVAILABLE = True
+except ImportError:
+    from .llm.mock_llm_gateway import MockLLMGateway as LLMGateway
+    HeliconeConfig = None
+    LLM_GATEWAY_AVAILABLE = False
 from .api.metrics import router as metrics_router, init_metrics_router
+from .api.chat import router as chat_router, init_chat_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,27 +40,33 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Secure Medical Chat API...")
     
     try:
-        # Initialize Helicone configuration
-        helicone_config = None
-        if os.getenv("HELICONE_API_KEY"):
-            helicone_config = HeliconeConfig(
-                api_key=os.getenv("HELICONE_API_KEY"),
-                enable_caching=os.getenv("HELICONE_ENABLE_CACHING", "true").lower() == "true",
-                cache_ttl_seconds=int(os.getenv("HELICONE_CACHE_TTL", "86400")),
-                enable_cost_tracking=True
+        if LLM_GATEWAY_AVAILABLE:
+            # Initialize Helicone configuration
+            helicone_config = None
+            if os.getenv("HELICONE_API_KEY"):
+                helicone_config = HeliconeConfig(
+                    api_key=os.getenv("HELICONE_API_KEY"),
+                    enable_caching=os.getenv("HELICONE_ENABLE_CACHING", "true").lower() == "true",
+                    cache_ttl_seconds=int(os.getenv("HELICONE_CACHE_TTL", "86400")),
+                    enable_cost_tracking=True
+                )
+                logger.info("Helicone configuration loaded")
+            else:
+                logger.warning("HELICONE_API_KEY not found - cost tracking will use mock data")
+            
+            # Initialize LLM Gateway
+            llm_gateway = LLMGateway(
+                helicone_config=helicone_config,
+                db_path=os.getenv("DATABASE_PATH", "data/secure_chat.db")
             )
-            logger.info("Helicone configuration loaded")
         else:
-            logger.warning("HELICONE_API_KEY not found - cost tracking will use mock data")
-        
-        # Initialize LLM Gateway
-        llm_gateway = LLMGateway(
-            helicone_config=helicone_config,
-            db_path=os.getenv("DATABASE_PATH", "data/secure_chat.db")
-        )
+            # Use mock gateway
+            llm_gateway = LLMGateway()
+            logger.warning("Using mock LLM Gateway - external services not available")
         
         # Initialize API routers
         init_metrics_router(llm_gateway)
+        init_chat_router(llm_gateway)
         
         logger.info("LLM Gateway initialized successfully")
         
@@ -122,6 +135,7 @@ async def health_check():
 
 # Include routers
 app.include_router(metrics_router, prefix="/api", tags=["metrics", "cost-tracking"])
+app.include_router(chat_router, prefix="/api", tags=["chat", "security"])
 
 if __name__ == "__main__":
     uvicorn.run(

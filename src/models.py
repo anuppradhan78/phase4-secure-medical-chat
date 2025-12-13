@@ -35,6 +35,8 @@ class ThreatType(str, Enum):
     PII_EXTRACTION = "pii_extraction"
     UNSAFE_CONTENT = "unsafe_content"
     RATE_LIMIT_EXCEEDED = "rate_limit_exceeded"
+    INJECTION_ATTACK = "injection_attack"
+    MEDICAL_SAFETY = "medical_safety"
 
 
 class EventType(str, Enum):
