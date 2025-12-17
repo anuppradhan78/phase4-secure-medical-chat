@@ -3,10 +3,33 @@ Mock LLM Gateway for testing when external services are not available.
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, Tuple, Optional
+from datetime import datetime, timezone, timedelta
+from typing import Dict, Any, Tuple, Optional, List
 
 from ..models import ChatRequest, ChatResponse, UserRole
+
+
+class MockCostTracker:
+    """Mock cost tracker for testing."""
+    
+    def __init__(self):
+        self.mock_data = []
+    
+    def get_cost_summary(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        user_role: Optional[UserRole] = None
+    ) -> Dict[str, Any]:
+        """Mock cost summary."""
+        return {
+            "summary": {
+                "total_cost_usd": 5.67,
+                "total_requests": 45,
+                "cache_hit_rate": 0.23,
+                "avg_cost_per_request": 0.126
+            }
+        }
 
 
 class MockLLMGateway:
@@ -15,6 +38,7 @@ class MockLLMGateway:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.request_count = 0
+        self.cost_tracker = MockCostTracker()
         self.logger.info("Mock LLM Gateway initialized")
     
     async def process_chat_request(
@@ -85,15 +109,165 @@ class MockLLMGateway:
     def get_metrics(self, period_hours: int = 24) -> Dict[str, Any]:
         """Mock metrics."""
         return {
-            "total_cost_usd": self.request_count * 0.002,
-            "queries_today": self.request_count,
-            "cache_hit_rate": 0.0,
-            "avg_latency_ms": 150.0,
-            "cost_by_model": {"mock-gpt-3.5-turbo": self.request_count * 0.002},
-            "cost_by_role": {
-                "patient": self.request_count * 0.001,
-                "physician": self.request_count * 0.001
+            "total_cost_usd": 15.67,
+            "queries_today": 234,
+            "cache_hit_rate": 0.23,
+            "avg_latency_ms": 1100.0,
+            "cost_by_model": {
+                "gpt-3.5-turbo": 8.45,
+                "gpt-4": 7.22
             },
-            "security_events_today": 0,
+            "cost_by_role": {
+                "patient": 5.23,
+                "physician": 8.91,
+                "admin": 1.53
+            },
+            "security_events_today": 3,
+            "mock_service": True
+        }
+    
+    def get_detailed_analytics(self, period_days: int = 7) -> Dict[str, Any]:
+        """Mock detailed analytics."""
+        return {
+            "period": {
+                "start": (datetime.now(timezone.utc) - timedelta(days=period_days)).isoformat(),
+                "end": datetime.now(timezone.utc).isoformat(),
+                "days": period_days
+            },
+            "summary": {
+                "total_cost_usd": 45.23,
+                "total_requests": 567,
+                "cache_hit_rate": 0.28,
+                "avg_cost_per_request": 0.08
+            },
+            "daily_costs": [
+                {"date": "2024-12-15", "total_cost": 6.78, "total_requests": 89},
+                {"date": "2024-12-14", "total_cost": 5.43, "total_requests": 67},
+                {"date": "2024-12-13", "total_cost": 7.89, "total_requests": 98}
+            ],
+            "trends": {
+                "cost_trend": "stable",
+                "usage_trend": "increasing",
+                "efficiency_trend": "improving"
+            },
+            "mock_service": True
+        }
+    
+    def get_optimization_report(self) -> Dict[str, Any]:
+        """Mock optimization report."""
+        return {
+            "current_metrics": {
+                "total_cost": 45.23,
+                "total_requests": 567,
+                "cache_hit_rate": 0.28,
+                "avg_cost_per_request": 0.08
+            },
+            "recommendations": [
+                {
+                    "category": "model_optimization",
+                    "priority": "high",
+                    "title": "Reduce GPT-4 Usage for Simple Queries",
+                    "description": "Consider routing simpler queries to GPT-3.5 to reduce costs",
+                    "potential_savings": 12.45,
+                    "implementation": "Improve query complexity analysis"
+                },
+                {
+                    "category": "caching",
+                    "priority": "medium", 
+                    "title": "Improve Caching Strategy",
+                    "description": "Cache hit rate is 28%. Increase cache TTL or improve cache key generation",
+                    "potential_savings": 6.78,
+                    "implementation": "Extend cache TTL and implement semantic similarity caching"
+                }
+            ],
+            "total_potential_savings": 19.23,
+            "mock_service": True
+        }
+    
+    def get_expensive_queries(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Mock expensive queries."""
+        return [
+            {
+                "id": 1,
+                "timestamp": "2024-12-16T10:30:00Z",
+                "model": "gpt-4",
+                "cost_usd": 0.045,
+                "user_role": "physician",
+                "total_tokens": 1500,
+                "cache_hit": False
+            },
+            {
+                "id": 2,
+                "timestamp": "2024-12-16T09:15:00Z", 
+                "model": "gpt-4",
+                "cost_usd": 0.038,
+                "user_role": "admin",
+                "total_tokens": 1200,
+                "cache_hit": False
+            },
+            {
+                "id": 3,
+                "timestamp": "2024-12-16T08:45:00Z",
+                "model": "gpt-3.5-turbo",
+                "cost_usd": 0.012,
+                "user_role": "patient",
+                "total_tokens": 800,
+                "cache_hit": False
+            }
+        ]
+    
+    def check_budget_alert(
+        self,
+        budget_limit: float,
+        period_hours: int = 24,
+        user_role: Optional[UserRole] = None
+    ) -> Dict[str, Any]:
+        """Mock budget alert check."""
+        current_cost = 15.67
+        return {
+            "budget_exceeded": current_cost >= budget_limit,
+            "current_cost": current_cost,
+            "budget_limit": budget_limit,
+            "utilization_percent": (current_cost / budget_limit) * 100 if budget_limit > 0 else 0,
+            "remaining_budget": max(0, budget_limit - current_cost),
+            "period_hours": period_hours,
+            "user_role": user_role.value if user_role else "all",
+            "requests_in_period": 234,
+            "mock_service": True
+        }
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Mock cache statistics."""
+        return {
+            "basic_stats": {
+                "total_entries": 45,
+                "cache_ttl_hours": 24,
+                "memory_usage_estimate": 46080
+            },
+            "performance_stats": {
+                "hit_rate": 0.23,
+                "total_requests": 234,
+                "cache_hits": 54,
+                "cache_misses": 180,
+                "evictions": 12
+            },
+            "content_analysis": {
+                "age_distribution": {"<1h": 15, "1-6h": 20, "6-24h": 10, ">24h": 0},
+                "model_distribution": {"gpt-3.5-turbo": 28, "gpt-4": 17},
+                "role_distribution": {"patient": 20, "physician": 18, "admin": 7}
+            },
+            "effectiveness": {
+                "cost_savings_estimate": 2.34,
+                "token_savings_estimate": 12000
+            },
+            "mock_service": True
+        }
+    
+    def clear_cache(self) -> Dict[str, Any]:
+        """Mock cache clearing."""
+        return {
+            "entries_cleared": 45,
+            "cache_stats_preserved": True,
+            "message": "Successfully cleared 45 cache entries",
             "mock_service": True
         }
