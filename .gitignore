@@ -29,10 +29,15 @@ ENV/
 env.bak/
 venv.bak/
 
-# Environment Variables
+# Environment Variables - NEVER commit these files
 .env
+.env.*
+!.env.example
+# Explicitly exclude common .env variants
 .env.local
 .env.production
+.env.development
+.env.staging
 
 # Database
 *.db

@@ -151,21 +151,21 @@ async def chat_endpoint(
             # Check rate limits
             rate_allowed, rate_info = rate_limiter.check_rate_limit(user_id, user_role)
             if not rate_allowed:
-            # Log security event for rate limit exceeded
-            security_event = SecurityEvent(
-                timestamp=datetime.now(timezone.utc),
-                user_id=user_id,
-                user_role=user_role,
-                session_id=session_id,
-                threat_type=ThreatType.RATE_LIMIT_EXCEEDED,
-                blocked_content=f"Rate limit exceeded: {rate_info['current_requests']}/{rate_info['limit']}",
-                risk_score=0.3,
-                detection_method="rate_limiter",
-                action_taken="request_blocked",
-                metadata=rate_info
-            )
-            db.log_security_event(security_event)
-            
+                # Log security event for rate limit exceeded
+                security_event = SecurityEvent(
+                    timestamp=datetime.now(timezone.utc),
+                    user_id=user_id,
+                    user_role=user_role,
+                    session_id=session_id,
+                    threat_type=ThreatType.RATE_LIMIT_EXCEEDED,
+                    blocked_content=f"Rate limit exceeded: {rate_info['current_requests']}/{rate_info['limit']}",
+                    risk_score=0.3,
+                    detection_method="rate_limiter",
+                    action_taken="request_blocked",
+                    metadata=rate_info
+                )
+                db.log_security_event(security_event)
+                
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail=f"Rate limit exceeded. {rate_info['remaining']} requests remaining. Resets at {rate_info['reset_time']}"
@@ -243,20 +243,20 @@ async def chat_endpoint(
             }
             
             if medical_validation.blocked:
-            security_event = SecurityEvent(
-                timestamp=datetime.now(timezone.utc),
-                user_id=user_id,
-                user_role=user_role,
-                session_id=session_id,
-                threat_type=ThreatType.MEDICAL_SAFETY,
-                blocked_content=request.message[:200],
-                risk_score=medical_validation.risk_score,
-                detection_method="medical_safety",
-                action_taken="request_blocked",
-                metadata=getattr(medical_validation, 'metadata', {}) or {}
-            )
-            db.log_security_event(security_event)
-            
+                security_event = SecurityEvent(
+                    timestamp=datetime.now(timezone.utc),
+                    user_id=user_id,
+                    user_role=user_role,
+                    session_id=session_id,
+                    threat_type=ThreatType.MEDICAL_SAFETY,
+                    blocked_content=request.message[:200],
+                    risk_score=medical_validation.risk_score,
+                    detection_method="medical_safety",
+                    action_taken="request_blocked",
+                    metadata=getattr(medical_validation, 'metadata', {}) or {}
+                )
+                db.log_security_event(security_event)
+                
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Medical safety concern: {medical_validation.reason}"

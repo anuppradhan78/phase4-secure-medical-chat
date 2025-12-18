@@ -78,5 +78,81 @@
   {
     "text": "Contact my physician Dr. Patricia Lee at 555-777-8888 for my medical history.",
     "expected_entities": ["PERSON", "PHONE_NUMBER"]
+  },
+  {
+    "text": "I have diabetes and my glucose levels have been high lately. Should I be concerned?",
+    "expected_entities": []
+  },
+  {
+    "text": "My patient ID is P123456 and I need to schedule a follow-up for next month.",
+    "expected_entities": []
+  },
+  {
+    "text": "Can you send my lab results to my work email: jane.doe@company.com by Friday?",
+    "expected_entities": ["EMAIL_ADDRESS"]
+  },
+  {
+    "text": "I was born in Chicago on 12/25/1985 and moved to 789 Oak Street, Denver, CO 80202 last year.",
+    "expected_entities": ["LOCATION", "DATE_TIME", "LOCATION"]
+  },
+  {
+    "text": "My insurance number is ABC123456789 and my policy expires on March 31, 2024.",
+    "expected_entities": ["DATE_TIME"]
+  },
+  {
+    "text": "Please call my emergency contact Sarah Johnson at (555) 123-4567 if anything happens during surgery.",
+    "expected_entities": ["PERSON", "PHONE_NUMBER"]
+  },
+  {
+    "text": "I have an appointment with Dr. Martinez on January 15th at 2:30 PM at the downtown clinic.",
+    "expected_entities": ["PERSON", "DATE_TIME", "LOCATION"]
+  },
+  {
+    "text": "My symptoms started last Tuesday around noon when I was at home.",
+    "expected_entities": ["DATE_TIME"]
+  },
+  {
+    "text": "The prescription was filled at CVS Pharmacy on Main Street on 02/14/2024.",
+    "expected_entities": ["LOCATION", "DATE_TIME"]
+  },
+  {
+    "text": "I need to update my address to 456 Elm Avenue, Portland, OR 97201 in your system.",
+    "expected_entities": ["LOCATION"]
+  },
+  {
+    "text": "My medical record shows I was treated by Dr. Robert Chen on September 10, 2023.",
+    "expected_entities": ["PERSON", "DATE_TIME"]
+  },
+  {
+    "text": "Please send the referral to specialist@hospital.org before my appointment next week.",
+    "expected_entities": ["EMAIL_ADDRESS"]
+  },
+  {
+    "text": "I was hospitalized at General Hospital from June 1st to June 5th, 2023.",
+    "expected_entities": ["LOCATION", "DATE_TIME", "DATE_TIME"]
+  },
+  {
+    "text": "My current medications were prescribed on 11/20/2023 by my primary care physician.",
+    "expected_entities": ["DATE_TIME"]
+  },
+  {
+    "text": "The test results from last Friday show some abnormal values that concern me.",
+    "expected_entities": ["DATE_TIME"]
+  },
+  {
+    "text": "I live at 123 Pine Street, Apartment 4B, San Francisco, CA 94102.",
+    "expected_entities": ["LOCATION"]
+  },
+  {
+    "text": "My date of birth is 07/04/1976 and my social security number is 123-45-6789.",
+    "expected_entities": ["DATE_TIME", "US_SSN"]
+  },
+  {
+    "text": "Dr. Emily Wilson called me yesterday at 555-999-8888 about my test results.",
+    "expected_entities": ["PERSON", "DATE_TIME", "PHONE_NUMBER"]
+  },
+  {
+    "text": "I have a family history of heart disease but no specific symptoms right now.",
+    "expected_entities": []
   }
 ]
