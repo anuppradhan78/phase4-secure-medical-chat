@@ -34,6 +34,7 @@ except ImportError:
 from ..security.guardrails import GuardrailsService
 from ..security.medical_safety import MedicalSafetyController
 from ..llm.llm_gateway import LLMGateway
+from ..llm.latency_tracker import LatencyTracker
 from ..database import get_database
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ rate_limiter = RateLimiter()
 pii_service = PIIRedactionService()
 guardrails_service = GuardrailsService()
 medical_safety_service = MedicalSafetyController()
+latency_tracker = LatencyTracker()
 
 # Router for chat endpoints
 router = APIRouter()
@@ -109,43 +111,46 @@ async def chat_endpoint(
     7. De-anonymization
     8. Audit Logging
     """
-    start_time = datetime.now(timezone.utc)
+    request_id = str(uuid.uuid4())
+    start_time = latency_tracker.start_request_tracking(request_id)
     user_id = current_user["user_id"]
     user_role = current_user["user_role"]
     session_id = current_user["session_id"]
     
     # Initialize response metadata
     metadata = {
+        "request_id": request_id,
         "redaction_info": {"entities_redacted": 0, "entity_types": []},
         "cost": 0.0,
         "latency_ms": 0,
         "model_used": "unknown",
         "cache_hit": False,
         "security_flags": [],
-        "pipeline_stages": []
+        "pipeline_stages": [],
+        "latency_breakdown": {}
     }
     
     db = get_database()
     
     try:
         # === STAGE 1: AUTHENTICATION & AUTHORIZATION ===
-        metadata["pipeline_stages"].append("authentication")
+        with latency_tracker.measure_stage(request_id, "authentication"):
+            # Check if user role is authorized for chat feature
+            if not rbac_service.authorize_feature(user_role, "basic_chat"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"User role '{user_role.value}' is not authorized for chat functionality"
+                )
         
-        # Check if user role is authorized for chat feature
-        if not rbac_service.authorize_feature(user_role, "basic_chat"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"User role '{user_role.value}' is not authorized for chat functionality"
-            )
+        metadata["pipeline_stages"].append("authentication")
         
         logger.info(f"Chat request from user {user_id} with role {user_role.value}")
         
         # === STAGE 2: RATE LIMITING ===
-        metadata["pipeline_stages"].append("rate_limiting")
-        
-        # Check rate limits
-        rate_allowed, rate_info = rate_limiter.check_rate_limit(user_id, user_role)
-        if not rate_allowed:
+        with latency_tracker.measure_stage(request_id, "rate_limiting"):
+            # Check rate limits
+            rate_allowed, rate_info = rate_limiter.check_rate_limit(user_id, user_role)
+            if not rate_allowed:
             # Log security event for rate limit exceeded
             security_event = SecurityEvent(
                 timestamp=datetime.now(timezone.utc),
@@ -161,37 +166,47 @@ async def chat_endpoint(
             )
             db.log_security_event(security_event)
             
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"Rate limit exceeded. {rate_info['remaining']} requests remaining. Resets at {rate_info['reset_time']}"
-            )
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Rate limit exceeded. {rate_info['remaining']} requests remaining. Resets at {rate_info['reset_time']}"
+                )
+        
+        metadata["pipeline_stages"].append("rate_limiting")
         
         # === STAGE 3: PII/PHI REDACTION ===
-        metadata["pipeline_stages"].append("pii_redaction")
-        
-        # Redact PII/PHI from user message
-        redaction_result = pii_service.redact_message(
-            request.message, 
-            user_id, 
-            session_id
-        )
+        with latency_tracker.measure_stage(request_id, "pii_redaction") as stage:
+            # Redact PII/PHI from user message
+            redaction_result = pii_service.redact_message(
+                request.message, 
+                user_id, 
+                session_id
+            )
+            stage.metadata = {
+                "entities_found": redaction_result.entities_found,
+                "entity_types": [et.value for et in redaction_result.entity_types]
+            }
         
         metadata["redaction_info"] = {
             "entities_redacted": redaction_result.entities_found,
             "entity_types": [et.value for et in redaction_result.entity_types]
         }
         
+        metadata["pipeline_stages"].append("pii_redaction")
+        
         if redaction_result.entities_found > 0:
             logger.info(f"Redacted {redaction_result.entities_found} PII/PHI entities")
         
         # === STAGE 4: GUARDRAILS VALIDATION ===
-        metadata["pipeline_stages"].append("guardrails_validation")
-        
-        # Validate input through guardrails
-        input_validation = guardrails_service.validate_input(
-            redaction_result.redacted_text, 
-            user_id
-        )
+        with latency_tracker.measure_stage(request_id, "guardrails_validation") as stage:
+            # Validate input through guardrails
+            input_validation = guardrails_service.validate_input(
+                redaction_result.redacted_text, 
+                user_id
+            )
+            stage.metadata = {
+                "blocked": input_validation.blocked,
+                "risk_score": input_validation.risk_score
+            }
         
         if input_validation.blocked:
             # Log security event for blocked content
@@ -216,12 +231,18 @@ async def chat_endpoint(
                 detail=f"Content blocked by security filters: {input_validation.reason}"
             )
         
-        # === STAGE 5: MEDICAL SAFETY VALIDATION ===
-        metadata["pipeline_stages"].append("medical_safety")
+        metadata["pipeline_stages"].append("guardrails_validation")
         
-        # Check for medical safety concerns
-        medical_validation = medical_safety_service.validate_input(request.message)
-        if medical_validation.blocked:
+        # === STAGE 5: MEDICAL SAFETY VALIDATION ===
+        with latency_tracker.measure_stage(request_id, "medical_safety") as stage:
+            # Check for medical safety concerns
+            medical_validation = medical_safety_service.validate_input(request.message)
+            stage.metadata = {
+                "blocked": medical_validation.blocked,
+                "risk_score": medical_validation.risk_score
+            }
+            
+            if medical_validation.blocked:
             security_event = SecurityEvent(
                 timestamp=datetime.now(timezone.utc),
                 user_id=user_id,
@@ -236,36 +257,46 @@ async def chat_endpoint(
             )
             db.log_security_event(security_event)
             
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Medical safety concern: {medical_validation.reason}"
-            )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Medical safety concern: {medical_validation.reason}"
+                )
+            
+            # Add emergency response flag if needed
+            medical_metadata = getattr(medical_validation, 'metadata', {}) or {}
+            if medical_metadata.get("requires_emergency_response"):
+                metadata["security_flags"].append("emergency_symptoms_detected")
         
-        # Add emergency response flag if needed
-        medical_metadata = getattr(medical_validation, 'metadata', {}) or {}
-        if medical_metadata.get("requires_emergency_response"):
-            metadata["security_flags"].append("emergency_symptoms_detected")
+        metadata["pipeline_stages"].append("medical_safety")
         
         # === STAGE 6: LLM PROCESSING ===
-        metadata["pipeline_stages"].append("llm_processing")
-        
-        if not llm_gateway:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="LLM gateway not available"
+        with latency_tracker.measure_stage(request_id, "llm_processing") as stage:
+            if not llm_gateway:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="LLM gateway not available"
+                )
+            
+            # Create chat request for LLM
+            llm_request = ChatRequest(
+                message=redaction_result.redacted_text,
+                user_role=user_role,
+                session_id=session_id,
+                user_id=user_id,
+                metadata={"original_message_length": len(request.message)}
             )
+            
+            # Process through LLM gateway
+            llm_response, llm_metadata = await llm_gateway.process_chat_request(llm_request)
+            
+            stage.metadata = {
+                "model_used": llm_metadata.get("model_used", "unknown"),
+                "cache_hit": llm_metadata.get("cache_hit", False),
+                "cost": llm_metadata.get("cost", 0.0),
+                "tokens_used": llm_metadata.get("tokens_used", 0)
+            }
         
-        # Create chat request for LLM
-        llm_request = ChatRequest(
-            message=redaction_result.redacted_text,
-            user_role=user_role,
-            session_id=session_id,
-            user_id=user_id,
-            metadata={"original_message_length": len(request.message)}
-        )
-        
-        # Process through LLM gateway
-        llm_response, llm_metadata = await llm_gateway.process_chat_request(llm_request)
+        metadata["pipeline_stages"].append("llm_processing")
         
         # Update metadata with LLM information
         metadata.update({
@@ -276,69 +307,86 @@ async def chat_endpoint(
         })
         
         # === STAGE 7: RESPONSE VALIDATION ===
+        with latency_tracker.measure_stage(request_id, "response_validation"):
+            # Validate LLM response through guardrails
+            output_validation = guardrails_service.validate_output(
+                llm_response.response, 
+                user_id
+            )
+            
+            # Apply any response modifications (e.g., medical disclaimers)
+            final_response = output_validation.modified_response or llm_response.response
+        
         metadata["pipeline_stages"].append("response_validation")
         
-        # Validate LLM response through guardrails
-        output_validation = guardrails_service.validate_output(
-            llm_response.response, 
-            user_id
-        )
-        
-        # Apply any response modifications (e.g., medical disclaimers)
-        final_response = output_validation.modified_response or llm_response.response
-        
         # === STAGE 8: DE-ANONYMIZATION ===
+        with latency_tracker.measure_stage(request_id, "de_anonymization"):
+            # De-anonymize response if needed
+            if redaction_result.entities_found > 0:
+                final_response = pii_service.de_anonymize_response(
+                    final_response, 
+                    user_id, 
+                    session_id
+                )
+        
         metadata["pipeline_stages"].append("de_anonymization")
         
-        # De-anonymize response if needed
-        if redaction_result.entities_found > 0:
-            final_response = pii_service.de_anonymize_response(
-                final_response, 
-                user_id, 
-                session_id
-            )
-        
         # === STAGE 9: RECORD USAGE AND AUDIT ===
-        metadata["pipeline_stages"].append("audit_logging")
-        
-        # Record request for rate limiting
-        rate_limiter.record_request(user_id, metadata["cost"])
-        
-        # Calculate final latency
-        end_time = datetime.now(timezone.utc)
-        latency_ms = int((end_time - start_time).total_seconds() * 1000)
-        metadata["latency_ms"] = latency_ms
-        
-        # Log audit event
-        audit_event = AuditEvent(
-            timestamp=start_time,
-            user_id=user_id,
-            user_role=user_role,
-            session_id=session_id,
-            event_type=EventType.CHAT_REQUEST,
-            message=redaction_result.redacted_text,  # Store redacted version
-            response=final_response[:500],  # Truncate for storage
-            cost_usd=metadata["cost"],
-            latency_ms=latency_ms,
-            entities_redacted=redaction_result.entity_types,
-            security_flags=metadata["security_flags"],
-            metadata={
-                "pipeline_stages": metadata["pipeline_stages"],
-                "model_used": metadata["model_used"],
-                "cache_hit": metadata["cache_hit"],
-                "tokens_used": metadata.get("tokens_used", 0),
-                "redaction_count": redaction_result.entities_found
+        with latency_tracker.measure_stage(request_id, "audit_logging"):
+            # Record request for rate limiting
+            rate_limiter.record_request(user_id, metadata["cost"])
+            
+            # Complete latency tracking
+            profile = latency_tracker.finish_request_tracking(
+                request_id,
+                start_time,
+                user_role.value,
+                metadata["model_used"],
+                metadata["cache_hit"],
+                False,  # optimization_applied
+                metadata
+            )
+            
+            metadata["latency_ms"] = int(profile.total_duration_ms)
+            metadata["latency_breakdown"] = {
+                stage.stage_name: stage.duration_ms 
+                for stage in profile.stages 
+                if stage.duration_ms is not None
             }
-        )
-        db.log_audit_event(audit_event)
         
-        # Update session activity
-        db.update_session_activity(session_id, metadata["cost"])
+            # Log audit event
+            audit_event = AuditEvent(
+                timestamp=datetime.now(timezone.utc),
+                user_id=user_id,
+                user_role=user_role,
+                session_id=session_id,
+                event_type=EventType.CHAT_REQUEST,
+                message=redaction_result.redacted_text,  # Store redacted version
+                response=final_response[:500],  # Truncate for storage
+                cost_usd=metadata["cost"],
+                latency_ms=metadata["latency_ms"],
+                entities_redacted=redaction_result.entity_types,
+                security_flags=metadata["security_flags"],
+                metadata={
+                    "pipeline_stages": metadata["pipeline_stages"],
+                    "model_used": metadata["model_used"],
+                    "cache_hit": metadata["cache_hit"],
+                    "tokens_used": metadata.get("tokens_used", 0),
+                    "redaction_count": redaction_result.entities_found,
+                    "latency_breakdown": metadata["latency_breakdown"]
+                }
+            )
+            db.log_audit_event(audit_event)
+            
+            # Update session activity
+            db.update_session_activity(session_id, metadata["cost"])
+        
+        metadata["pipeline_stages"].append("audit_logging")
         
         logger.info(
             f"Chat request completed successfully: "
             f"User={user_id}, Cost=${metadata['cost']:.4f}, "
-            f"Latency={latency_ms}ms, Model={metadata['model_used']}"
+            f"Latency={metadata['latency_ms']}ms, Model={metadata['model_used']}"
         )
         
         # Return successful response
@@ -355,22 +403,34 @@ async def chat_endpoint(
         # Log unexpected errors
         logger.error(f"Unexpected error in chat endpoint: {str(e)}", exc_info=True)
         
-        # Log error audit event
-        error_audit_event = AuditEvent(
-            timestamp=start_time,
-            user_id=user_id,
-            user_role=user_role,
-            session_id=session_id,
-            event_type=EventType.CHAT_REQUEST,
-            message=request.message[:200],
-            response=f"Error: {str(e)}",
-            cost_usd=0.0,
-            latency_ms=int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000),
-            entities_redacted=[],
-            security_flags=["system_error"],
-            metadata={"error": str(e), "pipeline_stages": metadata["pipeline_stages"]}
-        )
-        db.log_audit_event(error_audit_event)
+        # Complete error latency tracking
+        if start_time:
+            error_profile = latency_tracker.finish_request_tracking(
+                request_id,
+                start_time,
+                user_role.value,
+                "unknown",
+                False,
+                False,
+                {"error": str(e)}
+            )
+            
+            # Log error audit event
+            error_audit_event = AuditEvent(
+                timestamp=datetime.now(timezone.utc),
+                user_id=user_id,
+                user_role=user_role,
+                session_id=session_id,
+                event_type=EventType.CHAT_REQUEST,
+                message=request.message[:200],
+                response=f"Error: {str(e)}",
+                cost_usd=0.0,
+                latency_ms=int(error_profile.total_duration_ms),
+                entities_redacted=[],
+                security_flags=["system_error"],
+                metadata={"error": str(e), "pipeline_stages": metadata["pipeline_stages"]}
+            )
+            db.log_audit_event(error_audit_event)
         
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

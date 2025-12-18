@@ -25,6 +25,7 @@ except ImportError:
 from .api.metrics import router as metrics_router, init_metrics_router
 from .api.chat import router as chat_router, init_chat_router
 from .api.dashboard import router as dashboard_router, init_dashboard_router
+from .api.streaming import router as streaming_router, init_streaming_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI):
         init_metrics_router(llm_gateway)
         init_chat_router(llm_gateway)
         init_dashboard_router(llm_gateway)
+        init_streaming_router(llm_gateway)
         
         logger.info("LLM Gateway initialized successfully")
         
@@ -80,6 +82,7 @@ async def lifespan(app: FastAPI):
         init_metrics_router(llm_gateway)
         init_chat_router(llm_gateway)
         init_dashboard_router(llm_gateway)
+        init_streaming_router(llm_gateway)
         logger.warning("Using mock LLM Gateway as fallback")
     
     yield
@@ -145,6 +148,7 @@ async def health_check():
 app.include_router(metrics_router, prefix="/api", tags=["metrics", "cost-tracking"])
 app.include_router(chat_router, prefix="/api", tags=["chat", "security"])
 app.include_router(dashboard_router, prefix="/api", tags=["dashboard", "visualization"])
+app.include_router(streaming_router, prefix="/api", tags=["streaming", "latency", "sse"])
 
 if __name__ == "__main__":
     uvicorn.run(
