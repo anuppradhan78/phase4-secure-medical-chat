@@ -1,0 +1,165 @@
+{
+  "summary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0,
+    "success_rate": 100.0
+  },
+  "results": [
+    {
+      "scenario": "Minimal Configuration",
+      "status": "PASS",
+      "details": {
+        "provider": "openai",
+        "model": "gpt-3.5-turbo",
+        "cost_limit": 100.0,
+        "entities_count": 7
+      }
+    },
+    {
+      "scenario": "Full Configuration",
+      "status": "PASS",
+      "details": {
+        "environment": "development",
+        "model": "gpt-4",
+        "cost_limit": 200.0,
+        "entities": [
+          "PERSON",
+          "EMAIL_ADDRESS",
+          "PHONE_NUMBER",
+          "MEDICAL_LICENSE"
+        ],
+        "rate_limits": {
+          "patient": 5,
+          "physician": 50,
+          "admin": 500
+        }
+      }
+    },
+    {
+      "scenario": "Production Configuration",
+      "status": "PASS",
+      "details": {
+        "environment": "production",
+        "debug": false,
+        "security_enabled": true
+      }
+    },
+    {
+      "scenario": "Invalid Configuration",
+      "status": "PASS",
+      "details": {
+        "error_caught": true,
+        "error_message": "Failed to load configuration: Invalid LLM_PROVIDER 'invalid_provider'. Must be one of: openai, anthropic, azure"
+      }
+    },
+    {
+      "scenario": "Missing Required Variables",
+      "status": "PASS",
+      "details": {
+        "error_caught": true,
+        "error_message": "Failed to load configuration: Required environment variable LLM_PROVIDER is not set"
+      }
+    },
+    {
+      "scenario": "Different Guardrail Settings",
+      "status": "PASS",
+      "details": {
+        "variations": [
+          {
+            "name": "NeMo Only",
+            "guardrails_enabled": true,
+            "nemo_enabled": true,
+            "llama_guard_enabled": false,
+            "config_path": "config/nemo_only"
+          },
+          {
+            "name": "Llama Guard Only",
+            "guardrails_enabled": true,
+            "nemo_enabled": false,
+            "llama_guard_enabled": true,
+            "config_path": "config/guardrails"
+          },
+          {
+            "name": "Both Enabled",
+            "guardrails_enabled": true,
+            "nemo_enabled": true,
+            "llama_guard_enabled": true,
+            "config_path": "config/both_enabled"
+          },
+          {
+            "name": "All Disabled",
+            "guardrails_enabled": false,
+            "nemo_enabled": false,
+            "llama_guard_enabled": false,
+            "config_path": "config/guardrails"
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "Cost Limit Variations",
+      "status": "PASS",
+      "details": {
+        "cost_variations": [
+          {
+            "daily_limit": 50.0,
+            "alert_threshold": 90.0,
+            "alert_amount": 45.0
+          },
+          {
+            "daily_limit": 100.0,
+            "alert_threshold": 75.0,
+            "alert_amount": 75.0
+          },
+          {
+            "daily_limit": 500.0,
+            "alert_threshold": 80.0,
+            "alert_amount": 400.0
+          },
+          {
+            "daily_limit": 1000.0,
+            "alert_threshold": 95.0,
+            "alert_amount": 950.0
+          }
+        ]
+      }
+    },
+    {
+      "scenario": "Security Feature Toggles",
+      "status": "PASS",
+      "details": {
+        "security_toggles": [
+          {
+            "name": "All Security Enabled",
+            "pii_redaction": true,
+            "guardrails": true,
+            "medical_disclaimers": true,
+            "security_score": 3
+          },
+          {
+            "name": "PII Only",
+            "pii_redaction": true,
+            "guardrails": false,
+            "medical_disclaimers": false,
+            "security_score": 1
+          },
+          {
+            "name": "Guardrails Only",
+            "pii_redaction": false,
+            "guardrails": true,
+            "medical_disclaimers": false,
+            "security_score": 1
+          },
+          {
+            "name": "Minimal Security",
+            "pii_redaction": false,
+            "guardrails": false,
+            "medical_disclaimers": true,
+            "security_score": 1
+          }
+        ]
+      }
+    }
+  ]
+}
