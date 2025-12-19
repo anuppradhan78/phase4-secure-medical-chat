@@ -20,6 +20,24 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def serialize_metadata(metadata: Dict[str, Any]) -> str:
+    """
+    Serialize metadata dictionary to JSON, handling datetime objects.
+    
+    Args:
+        metadata: Dictionary that may contain datetime objects
+        
+    Returns:
+        JSON string with datetime objects converted to ISO format
+    """
+    def default_serializer(obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+    
+    return json.dumps(metadata, default=default_serializer)
+
+
 class DatabaseManager:
     """Manages SQLite database connections and operations."""
     
@@ -142,7 +160,7 @@ class DatabaseManager:
                 event.latency_ms,
                 json.dumps([et.value for et in event.entities_redacted]),
                 json.dumps(event.security_flags),
-                json.dumps(event.metadata)
+                serialize_metadata(event.metadata)
             ))
             conn.commit()
         
@@ -170,7 +188,7 @@ class DatabaseManager:
                 event.risk_score,
                 event.detection_method,
                 event.action_taken,
-                json.dumps(event.metadata)
+                serialize_metadata(event.metadata)
             ))
             conn.commit()
         
