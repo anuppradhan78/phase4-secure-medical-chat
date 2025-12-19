@@ -176,6 +176,25 @@ curl http://localhost:8000/health
 - **Cost metrics dashboard**
 - **Performance monitoring** (latency, cache hit rates)
 
+## 🗂️ Project Structure
+
+This project is organized for easy navigation and maintenance:
+
+```
+phase4-secure-medical-chat/
+├── 📁 demos/           # Interactive demonstrations (Web UI, CLI, Notebook)
+├── 📁 src/             # Source code and main application
+├── 📁 docs/            # Comprehensive documentation
+├── 📁 examples/        # Code examples and usage patterns
+├── 📁 scripts/         # Utility and validation scripts
+├── 📁 data/            # Databases, logs, and reports
+├── 📁 tests/           # Automated test suite
+├── 📁 config/          # Configuration files
+└── 📁 development/     # Development tools and artifacts
+```
+
+> **📋 [Complete Directory Guide](DIRECTORY_STRUCTURE.md)** - Detailed explanation of the project structure
+
 ## 🔧 API Endpoints
 
 ### Chat Endpoint
@@ -259,10 +278,10 @@ The system includes comprehensive red-team testing with:
 - **[PII/PHI Protection](docs/SECURITY_GUIDE.md#piiphi-redaction)** - 92% detection accuracy validation
 
 ### 🎯 Interactive Demonstrations
-- **[Demo Guide](DEMO_README.md)** - Interactive examples and usage scenarios
-- **[CLI Demo](demo_cli.py)** - Command-line interface demonstrations
-- **[Security Testing](run_security_tests.py)** - Automated security validation
-- **[Cost Dashboard](demo_cost_dashboard.py)** - Cost tracking and optimization
+- **[Web UI Demo](demos/web/streaming_demo.html)** - Real-time streaming interface with security visualization
+- **[CLI Demo](demos/cli/demo_cli.py)** - Command-line interface demonstrations
+- **[Jupyter Notebook](demos/notebook/demo_notebook.ipynb)** - Interactive notebook with comprehensive examples
+- **[Security Testing](scripts/run_security_tests.py)** - Automated security validation
 
 ### 📊 Validated Performance Metrics
 - **Response latency**: <2 seconds including all security checks
